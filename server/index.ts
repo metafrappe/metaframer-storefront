@@ -7,6 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const production = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT || 4301);
 const app = createApp({
+  trustedProxyIps: process.env.TRUSTED_PROXY_IPS,
   adminUrl: process.env.ADMIN_API_URL || "http://localhost:4300",
   catalogSecret: process.env.CATALOG_SHARED_SECRET || "",
   production,

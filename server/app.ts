@@ -4,6 +4,7 @@ import express, {
   type NextFunction,
 } from "express";
 import helmet from "helmet";
+import { parseTrustedProxyIps } from "./trusted-proxy.ts";
 import { rateLimit } from "express-rate-limit";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -11,12 +12,14 @@ export interface StorefrontConfig {
   adminUrl: string;
   catalogSecret: string;
   production: boolean;
+  trustedProxyIps?: string;
 }
 export function createApp(
   config: StorefrontConfig,
   fetcher: typeof fetch = fetch,
 ) {
   const app = express();
+  app.set("trust proxy", parseTrustedProxyIps(config.trustedProxyIps));
   app.disable("x-powered-by");
   app.use(
     helmet({
