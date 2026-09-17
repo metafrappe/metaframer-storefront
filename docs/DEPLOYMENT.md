@@ -1,9 +1,19 @@
-# Uzak test yayını
+# GitHub Pages yayını
 
-Vitrin React arayüzü ve salt okunur Express proxy birlikte yayımlanır. Tarayıcı aynı origin'deki `/api/v1/products` uçlarına bağlanır; proxy admin sunucusunun `/api/v1/catalog/products` uçlarına yalnız sunucuda saklanan `CATALOG_SHARED_SECRET` ile erişir.
+Vitrin adresi: https://metafrappe.github.io/metaframer-storefront/
+Yönetim adresi: https://metafrappe.github.io/metaframer-admin/
 
-İki reponun ortak Docker Compose ve nginx yayın paketi [metaframer-admin/deploy](https://github.com/metafrappe/metaframer-admin/tree/main/deploy) içinde; [yayın ve geri alma adımları](https://github.com/metafrappe/metaframer-admin/blob/main/docs/DEPLOYMENT.md) admin reposunda tutulur.
+Arayüz GitHub Pages'ta statik yayımlanır. Tarayıcı gerçek ürünleri `https://headless-api.metaframer.net/api/v1/public/products` üzerinden okur. API yalnız `Metaframer Demo` grubundaki etkin satış ürünlerini salt okunur hesapla listeler. Tarayıcı katalog API anahtarı, cookie veya Authorization göndermez.
 
-Hedef vitrin adresi `https://catalog-test.metaframer.net`, yönetim adresi `https://admin-test.metaframer.net`. **Bu adresler henüz yayınlanmış olarak doğrulanmadı.** Katalog okuyucusu kurulmadan gerçek ürün listesi testi tamamlanamaz.
+`.github/workflows/pages.yml`, main değişikliklerinde test → build → Pages deploy çalıştırır. Derleme ayarları:
 
-`TRUSTED_PROXY_IPS` varsayılanı boştur. Ortak Linux/nginx dağıtımında `127.0.0.1,::1` verilir; nginx istemci forwarding başlıklarını kendi doğruladığı bilgilerle değiştirir. Container yalnız loopback dinler. Build sırasında `VITE_ADMIN_URL` gerçek HTTPS admin adresi olmalıdır.
+```env
+VITE_BASE_PATH=/metaframer-storefront/
+VITE_ROUTER_MODE=hash
+VITE_API_BASE_URL=https://headless-api.metaframer.net
+VITE_ADMIN_URL=https://metafrappe.github.io/metaframer-admin/
+```
+
+HashRouter sayesinde doğrudan ürün bağlantıları ve sayfa yenileme Pages'ta çalışır. API kullanılamazsa arayüz gerçek hata gösterir; mock veriye sessizce geçmez.
+
+Yerel geliştirmede değişkenler verilmezse mevcut Node proxy ve BrowserRouter davranışı korunur. Canlı test sonucu ayrıca doğrulanmalıdır; GitHub'da yeşil `Checks`, yayın veya gerçek CRUD kanıtı değildir.

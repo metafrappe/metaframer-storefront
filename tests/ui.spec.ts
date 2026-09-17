@@ -1,6 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Product, ProductDetail, ProductList } from "../shared/contracts";
 
+const basePath = process.env.VITE_BASE_PATH || "/";
+const hashRouting = process.env.VITE_ROUTER_MODE === "hash";
+const remoteApiOrigin = process.env.VITE_API_BASE_URL?.replace(/\/$/, "");
+const apiPath = remoteApiOrigin ? "/api/v1/public/products" : "/api/v1/products";
+const apiPattern = `**${apiPath}**`;
+const responseHeaders = { "Access-Control-Allow-Origin": "*" };
+const uiPath = (path = "/") => hashRouting
+  ? `${basePath}#${path}`
+  : `${basePath}${path.slice(1)}`;
+
+
 /**
  * These are isolated UI/API-contract tests. Every product response is explicitly
  * intercepted here; these tests do NOT claim to verify the live Frappe service.
@@ -33,9 +44,9 @@ const variant: Product = {
 };
 
 async function mockCatalog(page: Page) {
-  await page.route("**/api/v1/products**", async (route) => {
+  await page.route(apiPattern, async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/v1/products") {
+    if (url.pathname === apiPath) {
       const query = (url.searchParams.get("q") || "").toLocaleLowerCase("tr");
       const group = url.searchParams.get("group") || "";
       const pageNumber = Number(url.searchParams.get("page") || 1);
@@ -59,13 +70,13 @@ async function mockCatalog(page: Page) {
           source: "frappe",
         },
       };
-      await route.fulfill({ json: response });
+      await route.fulfill({ headers: responseHeaders, json: response });
       return;
     }
     const id = decodeURIComponent(url.pathname.split("/").at(-1) || "");
     const product = [...products, variant].find((item) => item.id === id);
     if (!product) {
-      await route.fulfill({
+      await route.fulfill({ headers: responseHeaders,
         status: 404,
         json: { status: 404, title: "NOT_FOUND", requestId: "ui-contract-404" },
       });
@@ -78,7 +89,7 @@ async function mockCatalog(page: Page) {
       },
       meta: { source: "frappe" },
     };
-    await route.fulfill({ json: response });
+    await route.fulfill({ headers: responseHeaders, json: response });
   });
 }
 
@@ -98,7 +109,7 @@ for (const width of [390, 768, 1280, 1536]) {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await mockCatalog(page);
-    await page.goto("/");
+    await page.goto(uiPath());
     await expect(page.locator(".product-card")).toHaveCount(12);
     await expect(
       page.getByRole("heading", { name: products[0].name }),
@@ -146,7 +157,7 @@ test("search, filtering, sorting, pagination and back links preserve the URL sta
   page,
 }) => {
   await mockCatalog(page);
-  await page.goto("/");
+  await page.goto(uiPath());
   await expect(page.locator(".product-card")).toHaveCount(12);
   await page.getByLabel("Ürün adı veya kodu ara").fill("Katalog");
   await page.getByRole("button", { name: "Ara", exact: true }).click();
@@ -190,7 +201,7 @@ test("an empty search can be cleared without adding invented products", async ({
   page,
 }) => {
   await mockCatalog(page);
-  await page.goto("/?q=does-not-exist");
+  await page.goto(uiPath("/?q=does-not-exist"));
   await expect(
     page.getByRole("heading", { name: "Biraz daha farklı arayalım." }),
   ).toBeVisible();
@@ -205,15 +216,15 @@ for (const status of [429, 503]) {
     page,
   }) => {
     let recover = false;
-    await page.route("**/api/v1/products**", (route) =>
+    await page.route(apiPattern, (route) =>
       recover
-        ? route.fulfill({
+        ? route.fulfill({ headers: responseHeaders,
             json: {
               data: [],
               meta: { page: 1, pageSize: 12, hasMore: false, source: "frappe" },
             } satisfies ProductList,
           })
-        : route.fulfill({
+        : route.fulfill({ headers: responseHeaders,
             status,
             contentType: "application/problem+json",
             body: JSON.stringify({
@@ -224,7 +235,7 @@ for (const status of [429, 503]) {
             }),
           }),
     );
-    await page.goto("/");
+    await page.goto(uiPath());
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByRole("alert")).toContainText(
       status === 429
@@ -252,7 +263,7 @@ test("a missing product has a recoverable 404 instead of fake details", async ({
   page,
 }) => {
   await mockCatalog(page);
-  await page.goto("/products/DOES-NOT-EXIST");
+  await page.goto(uiPath("/products/DOES-NOT-EXIST"));
   await expect(page.getByRole("alert")).toContainText(
     "Bu ürün bulunamadı veya artık katalogda yayımlanmıyor.",
   );
@@ -277,7 +288,7 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
   const nextResponseGate = new Promise<void>((resolve) => {
     releaseResponse = resolve;
   });
-  await page.route("**/api/v1/products**", async (route) => {
+  await page.route(apiPattern, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/variants")) {
       requests.push({
@@ -285,7 +296,7 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
         pageSize: url.searchParams.get("pageSize"),
       });
       if (requests.length === 1) {
-        await route.fulfill({
+        await route.fulfill({ headers: responseHeaders,
           status: 503,
           json: {
             status: 503,
@@ -296,7 +307,7 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
         return;
       }
       await nextResponseGate;
-      await route.fulfill({
+      await route.fulfill({ headers: responseHeaders,
         json: {
           // The first row overlaps due to a catalog change between page requests.
           data: [variants[0], ...variants.slice(50)],
@@ -305,7 +316,7 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
       });
       return;
     }
-    await route.fulfill({
+    await route.fulfill({ headers: responseHeaders,
       json: {
         data: { product: products[0], variants: variants.slice(0, 50) },
         meta: {
@@ -315,7 +326,7 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
       } satisfies ProductDetail,
     });
   });
-  await page.goto(`/products/${products[0].id}`);
+  await page.goto(uiPath(`/products/${products[0].id}`));
   await expect(page.locator(".variant-row")).toHaveCount(50);
   await expect(page.getByText("50 seçenek gösteriliyor")).toBeVisible();
   await page.getByRole("button", { name: "Daha fazla varyant" }).click();
@@ -344,4 +355,60 @@ test("variant pagination retries the failed page, keeps existing rows and dedupl
     { page: "2", pageSize: "50" },
     { page: "2", pageSize: "50" },
   ]);
+});
+
+
+test("section links scroll without replacing the route hash, and skip link moves focus", async ({ page }) => {
+  await mockCatalog(page);
+  await page.goto(uiPath());
+  await expect(page.locator(".product-card")).toHaveCount(12);
+  const current = page.url();
+  await page.getByRole("link", { name: "Kataloğa göz atın" }).click();
+  await expect(page).toHaveURL(current);
+  await expect(page.locator(".product-card")).toHaveCount(12);
+  await page.getByRole("link", { name: "Kataloğun başına dön" }).click();
+  await expect(page).toHaveURL(current);
+  const skip = page.getByRole("link", { name: "İçeriğe geç" });
+  await skip.focus();
+  await skip.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
+  await expect(page).toHaveURL(current);
+});
+
+test("project-base assets, direct detail refresh and remote catalog requests work without browser credentials", async ({ page }) => {
+  const fontResponses: { url: string; status: number }[] = [];
+  const apiRequests: { url: string; cookie: string | undefined; authorization: string | undefined }[] = [];
+  page.on("response", response => {
+    if (/\.woff2(?:\?|$)/.test(response.url()))
+      fontResponses.push({ url: response.url(), status: response.status() });
+  });
+  page.on("request", request => {
+    if (request.url().includes(apiPath)) apiRequests.push({
+      url: request.url(), cookie: request.headers().cookie, authorization: request.headers().authorization,
+    });
+  });
+  if (remoteApiOrigin) {
+    // This cookie is a synthetic fixture. Public catalog requests must omit it.
+    await page.context().addCookies([{ name: "unrelated_session", value: "test-only-do-not-send", url: remoteApiOrigin }]);
+    await page.route(`${remoteApiOrigin}/**`, route => route.abort());
+  }
+  await mockCatalog(page);
+  await page.goto(uiPath(`/products/${products[0].id}`));
+  await expect(page.getByRole("heading", { level: 1, name: products[0].name })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: products[0].name })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  expect(fontResponses.length).toBeGreaterThan(0);
+  expect(fontResponses.every(font => font.status === 200 && new URL(font.url).pathname.startsWith(basePath))).toBe(true);
+  expect(apiRequests.length).toBeGreaterThan(0);
+  for (const request of apiRequests) {
+    const url = new URL(request.url);
+    expect(url.pathname).toBe(`${apiPath}/${products[0].id}`);
+    if (remoteApiOrigin) expect(url.origin).toBe(remoteApiOrigin);
+    expect(request.cookie).toBeUndefined();
+    expect(request.authorization).toBeUndefined();
+  }
+  await expect(page.getByRole("link", { name: "Yönetim", exact: true })).toHaveAttribute(
+    "href", process.env.VITE_ADMIN_URL || "http://localhost:4300",
+  );
 });

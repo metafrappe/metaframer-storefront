@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import {
   Link,
   Route,
@@ -29,6 +29,14 @@ import { ApiError, getResource } from "./api";
 
 const adminUrl = import.meta.env.VITE_ADMIN_URL || "http://localhost:4300";
 const PAGE_SIZE = 12;
+
+function scrollToSection(event: MouseEvent<HTMLAnchorElement>, id: string) {
+  // Changing #catalog would navigate HashRouter to an unrelated route.
+  event.preventDefault();
+  const section = document.getElementById(id);
+  section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (section?.hasAttribute("tabindex")) section.focus({ preventScroll: true });
+}
 
 function Header() {
   return (
@@ -232,7 +240,12 @@ function Catalog() {
     return () => controller.abort();
   }, [q, group, page, sort, revision]);
   function updateParams(values: Record<string, string>) {
-    const next = new URLSearchParams(params);
+    // Hash navigation can update the address before React finishes rendering.
+    // Merge rapid filter changes into the latest URL so earlier filters survive.
+    const currentUrl = import.meta.env.VITE_ROUTER_MODE === "hash"
+      ? new URL(window.location.hash.slice(1), window.location.origin)
+      : new URL(window.location.href);
+    const next = new URLSearchParams(currentUrl.search);
     Object.entries(values).forEach(([key, value]) =>
       value ? next.set(key, value) : next.delete(key),
     );
@@ -266,7 +279,7 @@ function Catalog() {
             İhtiyacınız olan ürünü bulun, özelliklerini inceleyin
             <br className="desktop-break" /> ve size uygun varyantı keşfedin.
           </p>
-          <a className="hero-cta" href="#catalog">
+          <a className="hero-cta" href="#catalog" onClick={(event) => scrollToSection(event, "catalog")}>
             Kataloğa göz atın{" "}
             <span>
               <ArrowDown size={18} />
@@ -513,7 +526,7 @@ function Catalog() {
               inceleyin.
             </p>
           </div>
-          <a href="#catalog" aria-label="Kataloğun başına dön">
+          <a href="#catalog" aria-label="Kataloğun başına dön" onClick={(event) => scrollToSection(event, "catalog")}>
             <ArrowUpRight size={25} />
           </a>
         </section>
@@ -826,7 +839,7 @@ function NotFound() {
 export default function App() {
   return (
     <>
-      <a className="skip-link" href="#main-content">
+      <a className="skip-link" href="#main-content" onClick={(event) => scrollToSection(event, "main-content")}>
         İçeriğe geç
       </a>
       <ScrollToTop />

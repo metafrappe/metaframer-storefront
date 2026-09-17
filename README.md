@@ -1,3 +1,7 @@
+# GitHub Pages test adresi
+
+https://metafrappe.github.io/metaframer-storefront/ · [Yayın mimarisi](docs/DEPLOYMENT.md)
+
 # Metaframer Storefront
 
 ERPNext ürünleri için responsive headless vitrin: ürün kataloğu, arama/filtre/sıralama, ürün detayı ve sayfalı varyant listesi.

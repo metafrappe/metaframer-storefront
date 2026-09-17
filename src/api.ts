@@ -1,5 +1,16 @@
 import type { ApiProblem } from "../shared/contracts";
 
+const remoteApiOrigin = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "");
+
+function catalogUrl(path: string) {
+  if (!remoteApiOrigin) return path;
+  // The Pages client can reach only the scoped, read-only public catalog.
+  // Product IDs, query parameters and variants retain their encoded form.
+  if (!/^\/api\/v1\/products(?:\/|\?|$)/.test(path))
+    throw new Error("Geçersiz katalog API yolu.");
+  return `${remoteApiOrigin}${path.replace("/api/v1/products", "/api/v1/public/products")}`;
+}
+
 export class ApiError extends Error {
   status: number;
   requestId?: string;
@@ -17,10 +28,11 @@ export async function getResource<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(catalogUrl(path), {
       signal,
       headers: { Accept: "application/json" },
       cache: "no-store",
+      credentials: "omit",
     });
   } catch (error) {
     if (signal.aborted) throw error;
